@@ -73,15 +73,48 @@ text {
     });
 </script>
 
+
+<!--
+// INSTRUCTION: DO NOT modify lines 33-74 above without asking. 
+
+// INSTRUCTION: You can convert the CSV after line 74 if you want. Who cares. . . I don't think I do. 
+
+// INSTRUCTION: Comment every line of code you change
+
+// INSTRUCTION: This sunburst should automatically adjust to the data it gets. You can't hard code the # of rings. For example, 
+    // the current data has 7 rings. I should be able to delete items and the chart should update with less rings. So if I delete 
+    // partnerDrug and phase from lines 56 and 57 above, then the sunburst should only have 5 rings. 
+    // The way sunbursts work is that identical data gets merged into a node. So the default data has 19 instances of "N-803". 
+    // These should be merged into a single node and there should be a number of radiating lines from that single node. 
+    // For an example of combined nodes see https://observablehq.com/@d3/zoomable-sunburst. This should work exactly like that. 
+
+// INSTRUCTION: If the data has a null entry, don't draw a node on the outer ring. Don't color a node on an inner ring. See an example
+    // here: http://sushanthece.github.io/D3-Zoomable-Sun-Burst/
+
+// INSTRUCTION: If there's a link in the data, there needs to be a link in the chart. E.g.: all "NCT" data is linked to 
+     // a webpage that opens in a new window. 
+
+// INSTRUCTION: I would like to have a label in the center that I can style with CSS. It can be a hard coded var" 
+     // var centerLabel = "my string"
+     // See example: https://codepen.io/thecraftycoderpdx/pen/rJYNRv
+
+// INSTRUCTION: Data/words need to neatly inside the nodes. Last to guys had text overflowing and it was unreadable. 
+     // Some of the strings are long. Make the node longer or break the string at whitespace and wrap it. Only wrap on whitespace.
+     // I set the font size and style. Don't change it. 
+
+--> 
+
 <script>
 $(function () {
     // helpful: https://bl.ocks.org/kerryrodden/477c1bfb081b783f80ad
-    // palettes: https://designschool.canva.com/blog/website-color-schemes/
+    // For reference ONLY. It's cool, but don't need it now. https://itecnote.com/tecnote/javascript-improving-d3-sequence-sunburst-example/
     // Global Variables
     var gWidth = $('#gameboard').width(),   // Width of the svg palette
         gHeight = $('#gameboard').height(),   // Height of the svg palette
         radius = (Math.min(gWidth, gHeight) / 2) - 10,
-        //ben note: we need to delete this data, rename the var to gsheetData, and use the var Data above.
+
+        // INSTRUCTION: Delete this data ( the var quote), rename the variable to gsheetData, and use the var data on line 34 above.
+
         quote = ["Acrobat sign", "Developer Guide[node2 [node3]] God[g2316] so[g3779] loved[g25] the world[g2889], that[g5620] he gave[g1325] his[g846] only begotten[g3439] Son[g5207], that[g2443] whosoever[g3956] believeth[g4100] in[g1519] him[g846] should[g622] not[g3361] perish[g622], but[g235] have[g2192] everlasting[g166] life[g2222]. For[g1063] God[g2316] sent[g649] not[g3756] his[g846] Son[g5207] into[g1519] the world[g2889] to[g2443] condemn[g2919] the world[g2889]; but[g235] that[g2443] the world[g2889] through[g1223] him[g846] might be XXX[g4982]."],
         mode = $('.mode:checked').val(), // Linear or grouped, based on radio buttons
         svg = d3.select("svg").append("g").attr("transform", "translate(" + gWidth / 2 + "," + (gHeight / 2) + ")"),
@@ -92,7 +125,7 @@ $(function () {
         node = root, // Save root for tweening
         x = d3.scaleLinear().range([0, 2 * Math.PI]),
         y = d3.scaleLinear().range([0, radius]),
-        color = d3.scaleLinear().domain([0, 0.5, 1]).range(color_palettes[~~(Math.random() * 1)]), // Ben note: we can remove the math.random function. Only one palette now.
+        color = d3.scaleLinear().domain([0, 0.5, 1]).range(color_palettes[~~(Math.random() * 1)]), 
         partition = d3.partition();
 
     // Calculate the d path for each slice.
