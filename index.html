@@ -68,10 +68,8 @@ text {
         });
         var csv = [];
         data.forEach(function (item) {
-            console.log(item)
             csv.push(Object.values(item).join(','));
         });
-        console.log(csv); // Use the browser tools to view data in the console (click on ...)
     });
 
 
@@ -102,118 +100,140 @@ text {
 // INSTRUCTION: Data/words need to neatly inside the nodes. Last to guys had text overflowing and it was unreadable. 
      // Some of the strings are long. Make the node longer or break the string at whitespace and wrap it. Only wrap on whitespace.
      // I set the font size and style. Don't change it. 
-
-$(function () {
+$(() => {
     var gWidth = $('#gameboard').width(),
         gHeight = $('#gameboard').height(),
         radius = (Math.min(gWidth, gHeight) / 2) - 10,
-        svg = d3.select("svg").append("g").attr("transform", "translate(" + gWidth / 2 + "," + (gHeight / 2) + ")"),
-        color = d3.scaleOrdinal(d3.schemeCategory20); 
-    
+        svg = d3.select("#gameboard").append("g").attr("transform", "translate(" + gWidth / 2 + "," + (gHeight / 2) + ")"),
+        color = d3.scaleOrdinal(d3.schemeCategory20),
+        fontSize = 12; 
+
     fetch('https://tradingtimeline.com/get-data.php?name=Trials').then(response => response.json()).then(sheet => {
-        // Convert the fetched data into a hierarchical format
         var root = buildHierarchy(sheet.values);
         drawSunburst(root);
     });
-    function buildHierarchy(values) {
+    const buildHierarchy = (values) => {
         let headers = values[0];
         let data = values.slice(1);
         let hierarchy = { name: "root", children: [] };
 
         headers.forEach((header, i) => {
-            // Skip empty header
             if (!header.trim()) return;
 
             let headerNode = { name: header, children: [] };
             data.forEach(row => {
                 let value = row[i];
-                // Find or add the value node under the current header node
                 let childNode = headerNode.children.find(child => child.name === value);
                 if (!childNode) {
                     childNode = { name: value, children: [], size: 1 };
                     headerNode.children.push(childNode);
                 } else {
-                    // If the node exists, increment its size (could adjust depending on how you want to handle duplicates)
                     childNode.size++;
                 }
             });
             hierarchy.children.push(headerNode);
         });
 
-        return d3.hierarchy(hierarchy)
-            .sum(d => d.size)
-            .sort((a, b) => b.value - a.value);
+        return d3.hierarchy(hierarchy).sum(d => d.size).sort((a, b) => b.value - a.value);
     }
-    function drawSunburst(root) {
+
+    const extractURLSegment = (dataName) => {
+        if (typeof dataName === "string" && dataName.startsWith("http")) {
+            const url = new URL(dataName);
+            const pathname = url.pathname;
+            return pathname.split('/').filter(Boolean).pop() || url.hostname;
+        }
+        return dataName || '';
+    }
+    
+    const drawSunburst = (root) => {
         var x = d3.scaleLinear().range([0, 2 * Math.PI]);
         var y = d3.scaleSqrt().range([0, radius]);
         var partition = d3.partition();
-        var arc = d3.arc()
-            .startAngle(d => x(d.x0))
-            .endAngle(d => x(d.x1))
-            .innerRadius(d => y(d.y0))
-            .outerRadius(d => y(d.y1));
-
         
         root = partition(root);
 
-        // Draw paths for each arc segment
-        var path = svg.selectAll("path")
+        const getTextLengthAdjustment = (text) => text.length * (fontSize / 2);
+
+        const computeTextRotation = (d) => {
+            const angle = (x((d.x0 + d.x1) / 2) - Math.PI / 2) / Math.PI * 180;
+            return (angle > 90) ? angle - 180 : angle;
+        }
+
+        const calculateAdditionalRadius = (node) => {
+            if (node.data.name === 'root') return 0;
+            return getTextLengthAdjustment(extractURLSegment(node.data.name));
+        };
+
+        const calculateParentAdjustment = (node) => {
+            if (!node.parent || node.depth === 0 || node.parent.data.name === 'root') return 0;
+            return getTextLengthAdjustment(extractURLSegment(node.parent.data.name));
+        };
+
+        var arc = d3.arc()
+            .startAngle(d => x(d.x0))
+            .endAngle(d => x(d.x1))
+            .innerRadius(d => y(d.y0) + calculateParentAdjustment(d))
+            .outerRadius(d => y(d.y1) + calculateAdditionalRadius(d));
+       
+        svg.selectAll("path")
             .data(root.descendants())
             .enter().append("path")
             .attr("d", arc)
             .style("fill", d => color((d.children ? d : d.parent).data.name))
             .on("click", click);
 
-        // Append text labels correctly here
-        var labels = svg.selectAll("text")
+        svg.selectAll("text")
             .data(root.descendants())
             .enter().append("text")
-            .filter(d => d.depth) // filter to remove root node or nodes you don't want labels for
-            .attr("transform", function(d) {
+            .filter(d => d.depth && d.data.name != null)
+            .attr("transform", (d) => {
                 return "translate(" + arc.centroid(d) + ")rotate(" + computeTextRotation(d) + ")";
             })
             .attr("text-anchor", "middle")
-            .text(function(d) { 
-                console.log("Label data:", d.data.name); // Log data to see what is being processed
-                return d.data.name; 
+            .text((d) => { 
+                return extractURLSegment(d.data.name);
             })
-            .style("fill", "black") // Ensure text color is visible
-            .style("visibility", d => d.parent ? null : "hidden"); // Hide the root node's text for clarity
+            .on("click", (d) => {
+                if (d.data.name.startsWith("http")) {
+                    window.open(d.data.name, '_blank');
+                }
+            })
+            .style("cursor", (d) => {
+                return d.data.name.startsWith("http") ? "pointer" : "default";
+            })
+            .style("fill", "black")
+            .style("visibility", d => d.parent ? null : "hidden");
 
-        function computeTextRotation(d) {
-            const angle = (x((d.x0 + d.x1) / 2) - Math.PI / 2) / Math.PI * 180;
-            return (angle > 90) ? angle - 180 : angle;
-        }
     }
 
-    function click(d) {
+    const click = (d) => {
         if (d.depth == 0 || d.depth == 1) {
             node = d;
             const total = d.x1 - d.x0
             svg.selectAll('path')
                 .transition('click')
                 .duration(750)
-                .attrTween('d', function (d, i) { return arcTweenPath(d, i) });
+                .attrTween('d', (d, i) => { return arcTweenPath(d, i) });
 
             svg.selectAll('text')
                 .transition('click')
                 .attr('opacity', 1)
                 .duration(750)
-                .attrTween('transform', function (d, i) {
+                .attrTween('transform', (d, i) => {
                     return arcTweenText(d)
                 })
-                .attr('text-anchor', function (d) {
+                .attr('text-anchor', (d) => {
                     return d.textAngle >= 18 ? 'end' : 'start';
                 })
-                .attr('dx', function (d) {
+                .attr('dx', (d) => {
                     // if(d.data.name.length > 3) {
                     //   return d.textAngle > 180 ? -13 : 13
                     // }
                     return d.textAngle >= 18 ? 27 : -27
                 })
                 .attr("opacity", function (e) {
-                    if (e.x0 >= d.x0 && e.x1 <= (d.x1 + 0.0100000000000001)) {
+                    if (e.x0 >= d.x0 && e.x1 <= (d.x1 + 0.01)) {
                         return (e.x1 - e.x0 > 0.01 ? 1 : 0);
                     } else {
                         return 0;
@@ -222,10 +242,9 @@ $(function () {
 
         }
         else if (d.depth == 2) { 
-            // assumed that data having maximum 2 levels Ben NOTE: this is no long true. Could be any number of levels.
             //I do not want to programmatically add links. Links should come from the Google Sheet data. However, we do want to open a new window. 
             // Perhaps target="blank" should be added to the data.
-            window.open("https://en.wikipedia.org/wiki/" + d.data.name, "_blank");
+            // window.open("https://en.wikipedia.org/wiki/" + d.data.name, "_blank");
         }
     }
 
@@ -317,12 +336,6 @@ $(function () {
         return root;
     }
 
-    // function computeTextRotation(d) {
-    //   console.log(d);
-    //       //return ((x(d.x0 + d.x1 / 2) - Math.PI / 2) / Math.PI) * 180;
-
-    //       return (x(d.x0 + d.x1 / 2) - Math.PI / 2) / Math.PI * 180;
-    //     }
 
     function arcTweenText(a, i) {
         var oi = d3.interpolate({ x0: (a.x0s ? a.x0s : 0), x1: (a.x1s ? a.x1s : 0), y0: (a.y0s ? a.y0s : 0), y1: (a.y1s ? a.y1s : 0) }, a);
