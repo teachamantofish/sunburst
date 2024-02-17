@@ -24,6 +24,7 @@ text {
 <body>
   <!--https://bl.ocks.org/denjn5/1a3f8e44cdcb3054121dfd991f59fbc2-->
   <svg id="gameboard"></svg>
+
   <label><input class="mode" type="radio" name="mode" value="linear" checked> Linear</label>
   <label><input class="mode" type="radio" name="mode" value="grouped"> Grouped</label>
 </body>
@@ -67,14 +68,14 @@ text {
         });
         var csv = [];
         data.forEach(function (item) {
+            console.log(item)
             csv.push(Object.values(item).join(','));
         });
         console.log(csv); // Use the browser tools to view data in the console (click on ...)
     });
-</script>
 
 
-<!--
+
 // INSTRUCTION: DO NOT modify lines 33-74 above without asking. 
 
 // INSTRUCTION: You can convert the CSV after line 74 if you want. Who cares. . . I don't think I do. 
@@ -102,140 +103,90 @@ text {
      // Some of the strings are long. Make the node longer or break the string at whitespace and wrap it. Only wrap on whitespace.
      // I set the font size and style. Don't change it. 
 
---> 
-
-<script>
 $(function () {
-    // helpful: https://bl.ocks.org/kerryrodden/477c1bfb081b783f80ad
-    // For reference ONLY. It's cool, but don't need it now. https://itecnote.com/tecnote/javascript-improving-d3-sequence-sunburst-example/
-    // Global Variables
-    var gWidth = $('#gameboard').width(),   // Width of the svg palette
-        gHeight = $('#gameboard').height(),   // Height of the svg palette
+    var gWidth = $('#gameboard').width(),
+        gHeight = $('#gameboard').height(),
         radius = (Math.min(gWidth, gHeight) / 2) - 10,
-
-        // INSTRUCTION: Delete this data ( the var quote), rename the variable to gsheetData, and use the var data on line 34 above.
-
-        quote = ["Acrobat sign", "Developer Guide[node2 [node3]] God[g2316] so[g3779] loved[g25] the world[g2889], that[g5620] he gave[g1325] his[g846] only begotten[g3439] Son[g5207], that[g2443] whosoever[g3956] believeth[g4100] in[g1519] him[g846] should[g622] not[g3361] perish[g622], but[g235] have[g2192] everlasting[g166] life[g2222]. For[g1063] God[g2316] sent[g649] not[g3756] his[g846] Son[g5207] into[g1519] the world[g2889] to[g2443] condemn[g2919] the world[g2889]; but[g235] that[g2443] the world[g2889] through[g1223] him[g846] might be XXX[g4982]."],
-        mode = $('.mode:checked').val(), // Linear or grouped, based on radio buttons
         svg = d3.select("svg").append("g").attr("transform", "translate(" + gWidth / 2 + "," + (gHeight / 2) + ")"),
-        color_palettes = [['#4abdac', '#fc4a1a', '#f7b733']]; // D3 uses these base colors to create all the other colors
+        color = d3.scaleOrdinal(d3.schemeCategory20); 
+    
+    fetch('https://tradingtimeline.com/get-data.php?name=Trials').then(response => response.json()).then(sheet => {
+        // Convert the fetched data into a hierarchical format
+        var root = buildHierarchy(sheet.values);
+        drawSunburst(root);
+    });
+    function buildHierarchy(values) {
+        let headers = values[0];
+        let data = values.slice(1);
+        let hierarchy = { name: "root", children: [] };
 
-    // D3 Global Variables
-    var root = textToHierarchy(quote[0], quote[1], quote[2]),
-        node = root, // Save root for tweening
-        x = d3.scaleLinear().range([0, 2 * Math.PI]),
-        y = d3.scaleLinear().range([0, radius]),
-        color = d3.scaleLinear().domain([0, 0.5, 1]).range(color_palettes[~~(Math.random() * 1)]), 
-        partition = d3.partition();
+        headers.forEach((header, i) => {
+            // Skip empty header
+            if (!header.trim()) return;
 
-    // Calculate the d path for each slice.
-    var arc = d3.arc()
-        .startAngle(function (d) { return Math.max(0, Math.min(2 * Math.PI, x(d.x0))); })
-        .endAngle(function (d) { return Math.max(0, Math.min(2 * Math.PI, x(d.x1))); })
-        .innerRadius(function (d) { return Math.max(0, y(d.y0)); })
-        .outerRadius(function (d) { return Math.max(0, y(d.y1)); });
-
-    // Build the sunburst.
-    var first_build = true;
-    function update() {
-        // Determine how to size the slices.
-        if (mode == "linear") {
-            root.sum(function (d) { return d.size; });
-        } else {
-            root.sum(function (d) { return d.grpSize; });
-        }
-
-        for (let i = 0; i < partition(root).descendants().length; i++) {
-            var ang = x((partition(root).descendants()[i].x0 + (x((partition(root).descendants()[i].x1) / 2) - Math.PI / 2) / Math.PI * 180));
-            partition(root).descendants()[i].textAngle = (ang >= 90) ? 90 + ang : ang
-        }
-
-        if (first_build) {
-            var g = svg
-                .selectAll("g")
-                .data(partition(root).descendants()).enter()
-                .append("g");
-
-            svg.exit().remove();
-            // Add a <path d="[shape]" style="fill: [color];"><title>[popup text]</title></path>
-            //   to each <g> element; add click handler; save slice widths for tweening
-            var path = g.append("path")
-                .style("fill", function (d) { return d.parent ? color(d.x0) : "white"; })  // Return white for root.
-                .on("click", click);
-
-            //Adding Label
-            var text = g
-                .append("text")
-                .attr("dy", ".35em") // vertical-align
-                .text(function (d) { return d.parent ? d.data.word : '' })
-                .attr('id', function (d) { return 'w' + d.data.word })
-                .on("click", click);
-
-            // Outer Layer Path Cursor Pointer
-            path.filter(d => d.depth == 2)
-                .on("mouseover", function (d, i) {
-                    d3.select(this).style("cursor", "pointer");
-                })
-                .on("click", click);
-
-            // Outer Layer Text Cursor Pointer & Text Underline
-            text.filter(d => d.depth == 2)
-                .on("mouseover", function (d, i) {
-                    d3.select(this).style("cursor", "pointer");
-                    d3.select(this).style("text-decoration", "underline");
-                })
-                .on("mouseout", function (d, i) {
-                    d3.select(this).style("text-decoration", "None");
-                })
-                .on("click", click);
-
-            //Title on mouseover
-            svg.selectAll("path").append("title").text(function (d) { return d.data.word; });
-            svg.selectAll("text").append("title").text(function (d) { return d.data.word; });
-
-            first_build = false;
-        } 
-        else {
-            svg.selectAll("path").data(partition(root).descendants());
-        }
-
-        svg.selectAll("path")
-            .transition('update')
-            .duration(750).attrTween('d', function (d, i) {
-                return arcTweenPath(d, i)
+            let headerNode = { name: header, children: [] };
+            data.forEach(row => {
+                let value = row[i];
+                // Find or add the value node under the current header node
+                let childNode = headerNode.children.find(child => child.name === value);
+                if (!childNode) {
+                    childNode = { name: value, children: [], size: 1 };
+                    headerNode.children.push(childNode);
+                } else {
+                    // If the node exists, increment its size (could adjust depending on how you want to handle duplicates)
+                    childNode.size++;
+                }
             });
+            hierarchy.children.push(headerNode);
+        });
 
-        svg.selectAll("text")
-            .transition('update')
-            .duration(750)
-            .attrTween('transform', function (d, i) { 
-                return arcTweenText(d, i) 
+        return d3.hierarchy(hierarchy)
+            .sum(d => d.size)
+            .sort((a, b) => b.value - a.value);
+    }
+    function drawSunburst(root) {
+        var x = d3.scaleLinear().range([0, 2 * Math.PI]);
+        var y = d3.scaleSqrt().range([0, radius]);
+        var partition = d3.partition();
+        var arc = d3.arc()
+            .startAngle(d => x(d.x0))
+            .endAngle(d => x(d.x1))
+            .innerRadius(d => y(d.y0))
+            .outerRadius(d => y(d.y1));
+
+        
+        root = partition(root);
+
+        // Draw paths for each arc segment
+        var path = svg.selectAll("path")
+            .data(root.descendants())
+            .enter().append("path")
+            .attr("d", arc)
+            .style("fill", d => color((d.children ? d : d.parent).data.name))
+            .on("click", click);
+
+        // Append text labels correctly here
+        var labels = svg.selectAll("text")
+            .data(root.descendants())
+            .enter().append("text")
+            .filter(d => d.depth) // filter to remove root node or nodes you don't want labels for
+            .attr("transform", function(d) {
+                return "translate(" + arc.centroid(d) + ")rotate(" + computeTextRotation(d) + ")";
             })
-            .attr('text-anchor', function (d) {
-                return d.textAngle >= 18 ? 'end' : 'start';
+            .attr("text-anchor", "middle")
+            .text(function(d) { 
+                console.log("Label data:", d.data.name); // Log data to see what is being processed
+                return d.data.name; 
             })
-            .attr('dx', function (d) {
-                return d.textAngle >= 18 ? 27 : -27
-            })
-            .attr("opacity", function (e) { 
-                return e.x1 - e.x0 > 0.01 ? 1 : 0; 
-            });
-        // svg.selectAll("path").transition().duration(1000).attrTween("d", arcTweenData);
+            .style("fill", "black") // Ensure text color is visible
+            .style("visibility", d => d.parent ? null : "hidden"); // Hide the root node's text for clarity
+
+        function computeTextRotation(d) {
+            const angle = (x((d.x0 + d.x1) / 2) - Math.PI / 2) / Math.PI * 180;
+            return (angle > 90) ? angle - 180 : angle;
+        }
     }
 
-    update(); // GO!
-
-    // Respond to radio click.
-    $('.mode').on("change", function change() {
-        mode = $('.mode:checked').val();
-        update();
-    });
-
-    // Respond to slice click.
-    // function click(d) {
-    //   node = d;
-    //   svg.selectAll("path").transition().duration(1000).attrTween("d", arcTweenZoom(d));
-    // }
     function click(d) {
         if (d.depth == 0 || d.depth == 1) {
             node = d;
@@ -270,7 +221,8 @@ $(function () {
                 });
 
         }
-        else if (d.depth == 2) { // assumed that data having maximum 2 levels Ben NOTE: this is no long true. Could be any number of levels.
+        else if (d.depth == 2) { 
+            // assumed that data having maximum 2 levels Ben NOTE: this is no long true. Could be any number of levels.
             //I do not want to programmatically add links. Links should come from the Google Sheet data. However, we do want to open a new window. 
             // Perhaps target="blank" should be added to the data.
             window.open("https://en.wikipedia.org/wiki/" + d.data.name, "_blank");
