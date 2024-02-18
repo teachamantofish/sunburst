@@ -7,8 +7,9 @@ body {
 }
 /* From the css we can manage size of the sunburst chart */
 #gameboard {
-  height: 900px;
-  width: 900px;
+  height: 1500px;
+  width: 100%;
+  margin: auto;
 }
 
 path {
@@ -103,7 +104,7 @@ text {
 $(() => {
     var gWidth = $('#gameboard').width(),
         gHeight = $('#gameboard').height(),
-        radius = (Math.min(gWidth, gHeight) / 2) - 10,
+        radius = 400,
         svg = d3.select("#gameboard").append("g").attr("transform", "translate(" + gWidth / 2 + "," + (gHeight / 2) + ")"),
         color = d3.scaleOrdinal(d3.schemeCategory20),
         fontSize = 12; 
@@ -122,14 +123,18 @@ $(() => {
 
             let headerNode = { name: header, children: [] };
             data.forEach(row => {
-                let value = row[i];
-                let childNode = headerNode.children.find(child => child.name === value);
-                if (!childNode) {
-                    childNode = { name: value, children: [], size: 1 };
-                    headerNode.children.push(childNode);
-                } else {
-                    childNode.size++;
-                }
+                let values = row[i].split(/[,;]\s*/).map(v => v.trim());
+                values.forEach(value => {
+                    if (!value) return;
+                    
+                    let childNode = headerNode.children.find(child => child.name === value);
+                    if (!childNode) {
+                        childNode = { name: value, children: [], size: 1 };
+                        headerNode.children.push(childNode);
+                    } else {
+                        childNode.size++;
+                    }
+                });
             });
             hierarchy.children.push(headerNode);
         });
@@ -149,7 +154,7 @@ $(() => {
     const drawSunburst = (root) => {
         var x = d3.scaleLinear().range([0, 2 * Math.PI]);
         var y = d3.scaleSqrt().range([0, radius]);
-        var partition = d3.partition();
+        const partition = d3.partition();
         
         root = partition(root);
 
@@ -167,22 +172,23 @@ $(() => {
 
         const calculateParentAdjustment = (node) => {
             if (!node.parent || node.depth === 0 || node.parent.data.name === 'root') return 0;
+            const parentAdjustment = calculateParentAdjustment(node.parent);
+
             return getTextLengthAdjustment(extractURLSegment(node.parent.data.name));
         };
+        
 
         var arc = d3.arc()
             .startAngle(d => x(d.x0))
             .endAngle(d => x(d.x1))
             .innerRadius(d => y(d.y0) + calculateParentAdjustment(d))
-            .outerRadius(d => y(d.y1) + calculateAdditionalRadius(d));
+            .outerRadius(d => y(d.y1) + calculateParentAdjustment(d) + calculateAdditionalRadius(d));
        
         svg.selectAll("path")
             .data(root.descendants())
             .enter().append("path")
             .attr("d", arc)
-            .style("fill", d => color((d.children ? d : d.parent).data.name))
-            .on("click", click);
-
+            .style("fill", d => color((d.children ? d : d.parent).data.name));
         svg.selectAll("text")
             .data(root.descendants())
             .enter().append("text")
@@ -207,47 +213,7 @@ $(() => {
 
     }
 
-    const click = (d) => {
-        if (d.depth == 0 || d.depth == 1) {
-            node = d;
-            const total = d.x1 - d.x0
-            svg.selectAll('path')
-                .transition('click')
-                .duration(750)
-                .attrTween('d', (d, i) => { return arcTweenPath(d, i) });
-
-            svg.selectAll('text')
-                .transition('click')
-                .attr('opacity', 1)
-                .duration(750)
-                .attrTween('transform', (d, i) => {
-                    return arcTweenText(d)
-                })
-                .attr('text-anchor', (d) => {
-                    return d.textAngle >= 18 ? 'end' : 'start';
-                })
-                .attr('dx', (d) => {
-                    // if(d.data.name.length > 3) {
-                    //   return d.textAngle > 180 ? -13 : 13
-                    // }
-                    return d.textAngle >= 18 ? 27 : -27
-                })
-                .attr("opacity", function (e) {
-                    if (e.x0 >= d.x0 && e.x1 <= (d.x1 + 0.01)) {
-                        return (e.x1 - e.x0 > 0.01 ? 1 : 0);
-                    } else {
-                        return 0;
-                    }
-                });
-
-        }
-        else if (d.depth == 2) { 
-            //I do not want to programmatically add links. Links should come from the Google Sheet data. However, we do want to open a new window. 
-            // Perhaps target="blank" should be added to the data.
-            // window.open("https://en.wikipedia.org/wiki/" + d.data.name, "_blank");
-        }
-    }
-
+   
     // When switching data: interpolate the arcs in data space.
     function arcTweenData(a, i) {
         // (a.x0s ? a.x0s : 0) -- grab the prev saved x0 or set to 0 (for 1st time through)
