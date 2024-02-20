@@ -34,7 +34,7 @@ text {
 
 <script type="text/javascript">
     var data = [];
-    fetch('https://tradingtimeline.com/get-data.php?name=Trials').then(response => response.json()).then(sheet => {
+    fetch('https://optionicity.com/biotech/ibrx/get-data.php?name=Trials').then(response => response.json()).then(sheet => {
         sheet.values.forEach(function (cell) {
             // Edit the data as needed
             var link = cell[2].trim();
@@ -107,40 +107,72 @@ $(() => {
         radius = 400,
         svg = d3.select("#gameboard").append("g").attr("transform", "translate(" + gWidth / 2 + "," + (gHeight / 2) + ")"),
         color = d3.scaleOrdinal(d3.schemeCategory20),
+        mode = $('.mode:checked').val()
         fontSize = 12; 
 
-    fetch('https://tradingtimeline.com/get-data.php?name=Trials').then(response => response.json()).then(sheet => {
+    fetch('https://optionicity.com/biotech/ibrx/get-data.php?name=Trials').then(response => response.json()).then(sheet => {
         var root = buildHierarchy(sheet.values);
         drawSunburst(root);
     });
-    const buildHierarchy = (values) => {
-        let headers = values[0];
-        let data = values.slice(1);
-        let hierarchy = { name: "root", children: [] };
 
-        headers.forEach((header, i) => {
-            if (!header.trim()) return;
+    $('.mode').on("change", function change() {
+        mode = $('.mode:checked').val();
 
-            let headerNode = { name: header, children: [] };
-            data.forEach(row => {
-                let values = row[i].split(/[,;]\s*/).map(v => v.trim());
-                values.forEach(value => {
-                    if (!value) return;
-                    
-                    let childNode = headerNode.children.find(child => child.name === value);
-                    if (!childNode) {
-                        childNode = { name: value, children: [], size: 1 };
-                        headerNode.children.push(childNode);
-                    } else {
-                        childNode.size++;
-                    }
-                });
-            });
-            hierarchy.children.push(headerNode);
+        fetch('https://optionicity.com/biotech/ibrx/get-data.php?name=Trials').then(response => response.json()).then(sheet => {
+            var root = buildHierarchy(sheet.values);
+            drawSunburst(root);
         });
 
-        return d3.hierarchy(hierarchy).sum(d => d.size).sort((a, b) => b.value - a.value);
-    }
+        console.log(mode)
+    });
+    const buildHierarchy = (values) => {
+    let root = { name: "root", children: [] };
+
+    // Starting from the second row, as the first row contains headers
+    values.slice(1).forEach(row => {
+        row.forEach((cellValue, columnIndex) => {
+            // Split values if cell contains semicolon-separated values
+            let parts = cellValue.split(";").map(part => part.trim());
+            parts.forEach((part, partIndex) => {
+                // For each part, navigate or create the path in the hierarchy
+                let currentPath = root; // Start from the root for each new part
+                for (let i = 0; i <= columnIndex; i++) {
+                    if (!currentPath.children) {
+                        currentPath.children = [];
+                    }
+                    let nextNode;
+                    if (i === columnIndex) {
+                        // We're at the depth where we need to insert or find the node for our part
+                        nextNode = currentPath.children.find(child => child.name === part);
+                        if (!nextNode) {
+                            nextNode = { name: part, children: [], size: 1 };
+                            currentPath.children.push(nextNode);
+                        } else {
+                            // Increment size if the node already exists (optional)
+                            nextNode.size++;
+                        }
+                    } else {
+                        // Navigate the path using the values from previous columns in the same row
+                        let previousPart = row[i].split(";")[0].trim(); // Assume first part defines the path
+                        nextNode = currentPath.children.find(child => child.name === previousPart);
+                        if (!nextNode) {
+                            nextNode = { name: previousPart, children: [], size: 0 };
+                            currentPath.children.push(nextNode);
+                        }
+                    }
+                    currentPath = nextNode; // Move deeper into the path
+                }
+            });
+        });
+    });
+
+    return d3.hierarchy(root)
+        .sum(d => d.size)
+        .sort((a, b) => b.value - a.value);
+};
+
+
+
 
     const extractURLSegment = (dataName) => {
         if (typeof dataName === "string" && dataName.startsWith("http")) {
@@ -150,8 +182,12 @@ $(() => {
         }
         return dataName || '';
     }
-    
     const drawSunburst = (root) => {
+        if (mode == "linear") {
+            root.sum((d) => d.size);
+        } else {
+            root.sum((d) => d.grpSize);
+        }
         var x = d3.scaleLinear().range([0, 2 * Math.PI]);
         var y = d3.scaleSqrt().range([0, radius]);
         const partition = d3.partition();
@@ -181,8 +217,8 @@ $(() => {
         var arc = d3.arc()
             .startAngle(d => x(d.x0))
             .endAngle(d => x(d.x1))
-            .innerRadius(d => y(d.y0) + calculateParentAdjustment(d))
-            .outerRadius(d => y(d.y1) + calculateParentAdjustment(d) + calculateAdditionalRadius(d));
+            .innerRadius(d => y(d.y0))
+            .outerRadius(d => y(d.y1));
        
         svg.selectAll("path")
             .data(root.descendants())
@@ -215,11 +251,11 @@ $(() => {
 
    
     // When switching data: interpolate the arcs in data space.
-    function arcTweenData(a, i) {
+    const arcTweenData = (a, i) => {
         // (a.x0s ? a.x0s : 0) -- grab the prev saved x0 or set to 0 (for 1st time through)
         // avoids the stash() and allows the sunburst to grow into being
         var oi = d3.interpolate({ x0: (a.x0s ? a.x0s : 0), x1: (a.x1s ? a.x1s : 0) }, a);
-        function tween(t) {
+        const tween = (t) => {
             var b = oi(t);
             a.x0s = b.x0;
             a.x1s = b.x1;
@@ -229,7 +265,7 @@ $(() => {
             // If we are on the first arc, adjust the x domain to match the root node
             // at the current zoom level. (We only need to do this once.)
             var xd = d3.interpolate(x.domain(), [node.x0, node.x1]);
-            return function (t) {
+            return (t) =>{
                 x.domain(xd(t));
                 return tween(t);
             };
@@ -238,10 +274,10 @@ $(() => {
         }
     }
 
-    function arcTweenPath(a, i) {
+    const arcTweenPath = (a, i) => {
         var oi = d3.interpolate({ x0: (a.x0s ? a.x0s : 0), x1: (a.x1s ? a.x1s : 0), y0: (a.y0s ? a.y0s : 0), y1: (a.y1s ? a.y1s : 0) }, a)
 
-        function tween(t) {
+        const tween = (t) => {
             var b = oi(t);
 
             a.x0s = b.x0;
@@ -271,7 +307,7 @@ $(() => {
     }
 
     // Take text from Strong's and format as hierarchy with root.
-    function textToHierarchy(rootNode, quote) {
+    const textToHierarchy = (rootNode, quote) => {
         var vsWords = quote.replace(/[^A-Za-z0-9 /[]/g, "").replace(/[/[]/g, "|").split(" ");
         var sbWords = [{ "name": rootNode, "parent": "" }];
 
@@ -303,10 +339,10 @@ $(() => {
     }
 
 
-    function arcTweenText(a, i) {
+    const arcTweenText = (a, i) => {
         var oi = d3.interpolate({ x0: (a.x0s ? a.x0s : 0), x1: (a.x1s ? a.x1s : 0), y0: (a.y0s ? a.y0s : 0), y1: (a.y1s ? a.y1s : 0) }, a);
 
-        function tween(t) {
+        const tween = (t) => {
             var b = oi(t)
             var ang = ((x((b.x0 + b.x1) / 2) - Math.PI / 2) / Math.PI * 180)
 
